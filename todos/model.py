@@ -1,11 +1,15 @@
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
+from fastapi import Form
 
 
-# Базовая модель с ID (для создания)
 class Todo(BaseModel):
-    id: int
+    id: Optional[int] = None
     item: str
+
+    @classmethod
+    def as_form(cls, item: str = Form(...)):
+        return cls(item=item)
 
     class Config:
         json_schema_extra = {
@@ -16,28 +20,9 @@ class Todo(BaseModel):
         }
 
 
-# Модель без ID (для обновления текста задачи через PUT)
 class TodoItem(BaseModel):
     item: str
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "item": "Обновленный текст задачи от Бурикова Алексея"
-            }
-        }
 
-
-# Модель ответа (скрывает id при запросе GET /todo)
 class TodoItems(BaseModel):
     todos: List[TodoItem]
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "todos": [
-                    {"item": "Пример задачи 1 (Буриков Алексей)"},
-                    {"item": "Пример задачи 2 (Буриков Алексей)"}
-                ]
-            }
-        }
