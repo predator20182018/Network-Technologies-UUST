@@ -1,58 +1,48 @@
-from fastapi import APIRouter, Body, HTTPException, status
-from models.events import Event
+﻿from fastapi import APIRouter, Depends, HTTPException, status
+from sqlmodel import select, Session
 from typing import List
+from database.connection import get_session
+from models.events import Event, EventUpdate
 
 event_router = APIRouter(tags=["Events"])
 
-# Временная база данных событий в памяти
-events = []
-
-
-# Получить все события
 @event_router.get("/", response_model=List[Event])
-async def retrieve_all_events() -> List[Event]:
-    return events
+async def retrieve_all_events(session: Session = Depends(get_session)) -> List[Event]:
+    statement = select(Event)
+    return session.exec(statement).all()
 
-
-# Получить одно событие по ID
 @event_router.get("/{id}", response_model=Event)
-async def retrieve_event(id: int) -> Event:
-    for event in events:
-        if event.id == id:
-            return event
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Событие с указанным ID не найдено"
-    )
+async def retrieve_event(id: int, session: Session = Depends(get_session)) -> Event:
+    event = session.get(Event, id)
+    if event:
+        return event
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Событие не найдено")
 
-
-# Создать новое событие с проверкой уникальности ID
 @event_router.post("/new")
-async def create_event(body: Event = Body(...)) -> dict:
-    for event in events:
-        if event.id == body.id:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Событие с ID {body.id} уже существует (Буриков Алексей)"
-            )
-    events.append(body)
-    return {"message": "Событие успешно создано (Буриков Алексей)"}
+async def create_event(new_event: Event, session: Session = Depends(get_session)) -> dict:
+    session.add(new_event)
+    session.commit()
+    session.refresh(new_event)
+    return {"message": "Событие успешно создано в SQLite", "id": new_event.id}
 
-# Удалить событие по ID
-@event_router.delete("/{id}")
-async def delete_event(id: int) -> dict:
-    for event in events:
-        if event.id == id:
-            events.remove(event)
-            return {"message": "Событие успешно удалено"}
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Событие с указанным ID не найдено"
-    )
+@event_router.put("/edit/{id}", response_model=Event)
+async def update_event(id: int, new_data: EventUpdate, session: Session = Depends(get_session)) -> Event:
+    event = session.get(Event, id)
+    if not event:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Событие не найдено")
+    event_data = new_data.model_dump(exclude_unset=True) if hasattr(new_data, "model_dump") else new_data.dict(exclude_unset=True)
+    for key, value in event_data.items():
+        setattr(event, key, value)
+    session.add(event)
+    session.commit()
+    session.refresh(event)
+    return event
 
-
-# Удалить все события
-@event_router.delete("/")
-async def delete_all_events() -> dict:
-    events.clear()
-    return {"message": "Все события успешно удалены"}
+@event_router.delete("/delete/{id}")
+async def delete_event(id: int, session: Session = Depends(get_session)) -> dict:
+    event = session.get(Event, id)
+    if event:
+        session.delete(event)
+        session.commit()
+        return {"message": "Событие успешно удалено из SQLite"}
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Событие не найдено")
