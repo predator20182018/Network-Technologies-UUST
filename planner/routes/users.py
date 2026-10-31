@@ -1,35 +1,36 @@
 from fastapi import APIRouter, HTTPException, status
-from models.users import User, UserSignIn, NewUser
+from database.connection import Database
+from models.users import User, UserSignIn
 
 user_router = APIRouter(tags=["User"])
-
-# Временная база данных пользователей в памяти
-users = {}
+user_database = Database(User)
 
 
-# Регистрация пользователя
+# Регистрация пользователя в MongoDB
 @user_router.post("/signup")
-async def sign_new_user(data: NewUser) -> dict:
-    if data.email in users:
+async def sign_user_up(user: User) -> dict:
+    user_exist = await User.find_one(User.email == user.email)
+    if user_exist:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Пользователь с таким email уже существует (Буриков Алексей)"
+            detail="Пользователь с данным email уже существует в MongoDB"
         )
-    users[data.email] = data
-    return {"message": "Пользователь успешно зарегистрирован (Буриков Алексей)!"}
+    await user_database.save(user)
+    return {"message": "Пользователь успешно сохранен в MongoDB (Буриков Алексей)"}
 
 
-# Авторизация пользователя
+# Авторизация
 @user_router.post("/signin")
 async def sign_user_in(user: UserSignIn) -> dict:
-    if user.email not in users:
+    user_exist = await User.find_one(User.email == user.email)
+    if not user_exist:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Пользователь не найден (Буриков Алексей)"
+            detail="Пользователь с таким email не найден"
         )
-    if users[user.email].password != user.password:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Неверные учетные данные (пароль не совпадает)"
-        )
-    return {"message": "Успешный вход в систему (Буриков Алексей)"}
+    if user_exist.password == user.password:
+        return {"message": "Успешная авторизация в MongoDB (Буриков Алексей)"}
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Неверный пароль"
+    )
